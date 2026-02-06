@@ -1,0 +1,357 @@
+INSTRUCTIONS.txt
+flow_agent_mcp
+
+Full context and what this system does
+
+This repository provides a modular flow monitoring system built around an MCP server plus an agent.
+
+Core idea
+You run an MCP server that can ingest flow telemetry from multiple protocols through pluggable capabilities. The server normalizes everything into a single internal record type called FlowRecord. A monitor analyzes recent FlowRecord data and produces alerts when thresholds are exceeded. An agent connects to the MCP server and orchestrates the workflow by starting collectors, tuning thresholds, polling monitoring results, and sending alerts to external systems.
+
+What the MCP server does
+1. Loads capabilities at runtime based on an environment variable
+2. Exposes a stable set of MCP tools for discovery, status, configuration, and monitoring
+3. Runs one or more protocol collectors (capabilities) that ingest flow export data
+4. Decodes protocol specific messages into FlowRecord objects
+5. Stores recent FlowRecord objects in a bounded in memory store
+6. Runs a protocol neutral monitor that computes per flow statistics and generates alert objects
+
+What the agent does
+1. Connects to the MCP server using an MCP client session
+2. Discovers capabilities available on the server
+3. Starts a specific capability collector, for example json_udp, sflow_udp, netflow_udp, jflow_udp, or ipfix_udp
+4. Sets monitoring thresholds and window parameters
+5. Polls monitor_once on an interval
+6. Consumes alert objects and forwards them to a destination such as stdout, logs, Slack, PagerDuty, email, or an HTTP endpoint
+
+Important note about latency
+Many flow export protocols do not carry true end to end latency as a direct field. This repo supports a latency based monitor using FlowRecord.latency_ms. If your exporter does not provide latency, you can do one of these:
+1. Enrich latency_ms using another telemetry stream before alerting
+2. Add additional monitors based on bytes, packets, retransmits, queueing, errors, or other signals
+
+Tooling model
+
+Core MCP tools
+list_capabilities
+capability_status
+set_thresholds
+analyze_latency
+monitor_once
+
+Capability tools
+start_collection
+stop_collection
+
+Capability tools take a capability argument so multiple collectors can share the same tool names.
+
+Engineering flow diagram
+
+Legend
+Box is a component
+Arrow shows a call or data flow
+
+Diagram A, infrastructure and runtime data flow
+
+  ┌───────────────────────────────┐
+  │  Exporters and sample sources  │
+  │  sFlow, NetFlow, jFlow, IPFIX  │
+  │  or local json_udp sender      │
+  └───────────────┬───────────────┘
+                  │ UDP datagrams
+                  ▼
+  ┌──────────────────────────────────────────┐
+  │           Capability collector            │
+  │   sflow_udp, netflow_udp, jflow_udp,      │
+  │   ipfix_udp, json_udp                     │
+  └───────────────┬──────────────────────────┘
+                  │ decode protocol message
+                  ▼
+  ┌──────────────────────────────────────────┐
+  │          Normalization layer              │
+  │  build FlowRecord objects                 │
+  └───────────────┬──────────────────────────┘
+                  │ add_many
+                  ▼
+  ┌──────────────────────────────────────────┐
+  │              FlowStore                    │
+  │   bounded in memory store of FlowRecord   │
+  └───────────────┬──────────────────────────┘
+                  │ recent window
+                  ▼
+  ┌──────────────────────────────────────────┐
+  │           LatencyMonitor                  │
+  │ analyze per flow statistics, build alerts │
+  └───────────────┬──────────────────────────┘
+                  │ alerts returned via MCP tool
+                  ▼
+  ┌──────────────────────────────────────────┐
+  │                 Agent                     │
+  │ polls monitor_once, sends alerts outward  │
+  └───────────────┬──────────────────────────┘
+                  │ notify
+                  ▼
+  ┌──────────────────────────────────────────┐
+  │   Alert destination                        │
+  │   stdout, logs, Slack, PagerDuty, HTTP     │
+  └──────────────────────────────────────────┘
+
+
+Diagram B, code call flow between agent and MCP tools
+
+Agent
+  1. call list_capabilities
+     Agent ⇒ MCP server tool list_capabilities
+  2. call start_collection with a chosen capability
+     Agent ⇒ MCP server tool start_collection
+     MCP server routes to capability instance start
+  3. call set_thresholds
+     Agent ⇒ MCP server tool set_thresholds
+     MCP server updates LatencyMonitor settings
+  4. loop every N seconds
+     Agent ⇒ MCP server tool monitor_once
+     MCP server does
+       FlowStore.recent
+       LatencyMonitor.analyze
+       LatencyMonitor.build_alerts
+     MCP server ⇒ Agent returns analysis and alerts
+  5. Agent forwards alerts to destination
+
+Part 1. Prerequisites
+
+You need
+1. Python 3.11 or newer
+2. pip
+3. git
+4. Optional but recommended: a virtual environment
+
+Part 2. Pull the repo
+
+1. Clone
+   git clone <your repo url>
+2. Enter repo
+   cd flow_agent_mcp
+
+Part 3. Create a virtual environment
+
+macOS or Linux
+1. python3 -m venv venv
+2. source venv/bin/activate
+
+Windows PowerShell
+1. py -m venv venv
+2. venv\Scripts\Activate.ps1
+
+Part 4. Install dependencies
+
+1. Install the package
+   pip install .
+
+2. Install dev dependencies
+   pip install pytest pytest-cov ruff
+
+Part 5. Run tests
+
+pytest
+
+Part 6. Start the MCP server
+
+The server loads capabilities based on FLOW_CAPABILITIES.
+FLOW_CAPABILITIES is a JSON list of import paths.
+
+Common capability import paths
+flow_agent_mcp.capabilities.json_udp.capability:build_capability
+flow_agent_mcp.capabilities.sflow_udp.capability:build_capability
+flow_agent_mcp.capabilities.netflow_udp.capability:build_capability
+flow_agent_mcp.capabilities.jflow_udp.capability:build_capability
+flow_agent_mcp.capabilities.ipfix_udp.capability:build_capability
+
+Start with json_udp only for local testing.
+
+macOS or Linux
+export FLOW_CAPABILITIES='["flow_agent_mcp.capabilities.json_udp.capability:build_capability"]'
+
+Windows PowerShell
+setx FLOW_CAPABILITIES "[\"flow_agent_mcp.capabilities.json_udp.capability:build_capability\"]"
+Open a new terminal after setx.
+
+Run server
+python src/flow_agent_mcp/cli/run_server.py
+
+Leave this running.
+
+Part 7. Send sample flows using json_udp
+
+json_udp listens on UDP port 6343 by default.
+
+Open a second terminal
+1. cd flow_agent_mcp
+2. activate venv
+3. run:
+   python scripts/send_json_udp_samples.py
+
+This sends sample JSON flows to localhost 6343.
+
+Part 8. Add example agent scripts
+
+Create a folder for examples
+mkdir -p examples
+
+Example 1. Minimal agent logic template
+Create file
+examples/minimal_agent.py
+
+Paste this code
+
+BEGIN examples/minimal_agent.py
+
+import json
+import os
+import time
+
+def run_mcp_tool(tool_name, tool_args=None):
+    """
+    Placeholder tool caller.
+
+    Use Example 2 for a working MCP client that calls tools.
+    """
+    raise NotImplementedError(
+        "Use Example 2 to call MCP tools with a real MCP client session."
+    )
+
+def main():
+    capability = os.environ.get("FLOW_CAPABILITY_NAME", "json_udp")
+    interval = int(os.environ.get("POLL_SECONDS", "10"))
+
+    # Example sequence
+    # run_mcp_tool("start_collection", {"capability": capability, "host": "0.0.0.0", "port": 6343})
+    # run_mcp_tool("set_thresholds", {"threshold_ms": 150.0, "window_seconds": 60, "min_samples": 5, "cooldown_seconds": 30})
+
+    while True:
+        # out = run_mcp_tool("monitor_once", {})
+        # alerts = out.get("alerts", [])
+        # if alerts:
+        #     print(json.dumps(alerts, indent=2))
+        print("Minimal agent template running. Use Example 2 for real MCP calls.")
+        time.sleep(interval)
+
+if __name__ == "__main__":
+    main()
+
+END examples/minimal_agent.py
+
+
+Example 2. Working agent using MCP python client over stdio
+Create file
+examples/mcp_agent.py
+
+Paste this code
+
+BEGIN examples/mcp_agent.py
+
+import asyncio
+import json
+import os
+import sys
+from typing import Any, Dict, Optional
+
+async def main() -> None:
+    from mcp.client.stdio import stdio_client
+    from mcp.client.session import ClientSession
+
+    capability = os.environ.get("FLOW_CAPABILITY_NAME", "json_udp")
+    poll_seconds = int(os.environ.get("POLL_SECONDS", "10"))
+
+    server_cmd = [sys.executable, "src/flow_agent_mcp/cli/run_server.py"]
+
+    async with stdio_client(server_cmd, env=os.environ.copy()) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            async def call_tool(name: str, arguments: Optional[Dict[str, Any]] = None) -> Any:
+                arguments = arguments or {}
+                result = await session.call_tool(name, arguments)
+                return result
+
+            caps = await call_tool("list_capabilities")
+            print("Capabilities:", caps)
+
+            start_resp = await call_tool(
+                "start_collection",
+                {"capability": capability, "host": "0.0.0.0", "port": 6343},
+            )
+            print("Start:", start_resp)
+
+            thresh = await call_tool(
+                "set_thresholds",
+                {"threshold_ms": 150.0, "window_seconds": 60, "min_samples": 5, "cooldown_seconds": 30},
+            )
+            print("Thresholds:", thresh)
+
+            while True:
+                out = await call_tool("monitor_once", {})
+                alerts = out.get("alerts", [])
+                if alerts:
+                    print("ALERTS")
+                    print(json.dumps(alerts, indent=2))
+                await asyncio.sleep(poll_seconds)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+END examples/mcp_agent.py
+
+
+Part 9. Run the working agent example
+
+Terminal 1
+1. export FLOW_CAPABILITIES='["flow_agent_mcp.capabilities.json_udp.capability:build_capability"]'
+2. python src/flow_agent_mcp/cli/run_server.py
+
+Terminal 2
+1. python scripts/send_json_udp_samples.py
+
+Terminal 3
+1. pip install mcp
+2. python examples/mcp_agent.py
+
+You should see
+1. Capabilities list printed
+2. Start response printed
+3. Thresholds printed
+4. ALERTS printed when p95 exceeds threshold
+
+Part 10. Real protocol usage notes
+
+sFlow
+1. Start server with sflow_udp capability in FLOW_CAPABILITIES
+2. Configure devices to export sFlow datagrams to collector host and port 6343
+3. Start collection with start_collection capability sflow_udp host 0.0.0.0 port 6343
+4. Confirm status counters increase using capability_status
+
+NetFlow and jFlow
+1. Start server with netflow_udp or jflow_udp
+2. Configure exporter to send to collector port 2055
+3. Template formats require templates to arrive before data decodes
+
+IPFIX
+1. Start server with ipfix_udp
+2. Configure exporter to send to collector port 4739
+3. Templates must arrive before data decodes
+
+Part 11. Troubleshooting
+
+Agent cannot import mcp client modules
+1. pip install mcp
+2. Confirm you are running inside the same venv used for the server
+
+No alerts appear
+1. Confirm the sample sender is running
+2. Lower threshold_ms to 50 for testing
+3. Confirm monitor window_seconds includes fresh samples
+
+Port already in use
+1. Stop the process using the port
+2. Or run start_collection with a different port and update your sender or exporter configuration
+
+End
+You can now clone, run server, send samples, and run an agent that calls MCP tools.

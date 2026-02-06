@@ -1,0 +1,10 @@
+#To make NetFlow v9 and IPFIX template caching work, the decoder needs the exporter identity. That comes from recvfrom.
+
+#So update each UDP capability _run method to pass exporter IP to its decoder.
+
+#Example for NetFlow capability _run:
+data, addr = await loop.sock_recvfrom(sock, 65535)
+exporter_ip = addr[0]
+flows = decode_netflow(data, exporter=exporter_ip)
+
+#Same change for IPFIX and jFlow. This is required for correctness

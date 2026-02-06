@@ -1,0 +1,24 @@
+#Install
+
+pip install -e ".[dev]"
+pytest
+
+#Run server with json_udp
+export FLOW_CAPABILITIES='["flow_agent_mcp.capabilities.json_udp.capability:build_capability"]'
+python -m flow_agent_mcp.cli.run_server
+
+#send samples
+python scripts/send_json_udp_samples.py
+
+#Change to load all capabilities
+export FLOW_CAPABILITIES='[
+  "flow_agent_mcp.capabilities.json_udp.capability:build_capability",
+  "flow_agent_mcp.capabilities.sflow_udp.capability:build_capability",
+  "flow_agent_mcp.capabilities.netflow_udp.capability:build_capability",
+  "flow_agent_mcp.capabilities.jflow_udp.capability:build_capability",
+  "flow_agent_mcp.capabilities.ipfix_udp.capability:build_capability"
+]'
+python -m flow_agent_mcp.cli.run_server
+
+#At this point, json_udp will ingest real sample data, the others will run but not ingest because their decoders are stubs.
+
