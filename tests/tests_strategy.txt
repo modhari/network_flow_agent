@@ -1,0 +1,25 @@
+The clean way to unit test “all flow collection formats” is to split tests into two layers.
+
+Layer 1 tests decoders with synthetic packets. This gives us deterministic, fast tests and full coverage.
+
+Layer 2 tests collectors end to end over UDP using a local event loop. This proves that our collectors can bind, receive, decode, and write into FlowStore.
+
+complete testing approach:
+
+Decoder unit tests
+
+These run without sockets.
+	•	sFlow v5 sampled header record parses IPv4 TCP or UDP 5 tuple
+	•	NetFlow v5 fixed format record parses fields
+	•	NetFlow v9 template then data flowset parses fields
+	•	IPFIX template then data set parses fields
+	•	jFlow decode delegates to NetFlow decoder
+
+Collector integration tests
+
+These run with UDP sockets on localhost.
+	•	json_udp collector receives and stores FlowRecords
+	•	sflow_udp collector receives and stores
+	•	netflow_udp collector receives and stores
+	•	ipfix_udp collector receives and stores
+	•	jflow_udp collector receives and stores
