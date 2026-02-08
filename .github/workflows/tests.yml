@@ -13,5 +13,5 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install .
-      - run: pip install pytest
+      - run: pip install pytest pytest-asyncio pytest-cov
       - run: pytest
