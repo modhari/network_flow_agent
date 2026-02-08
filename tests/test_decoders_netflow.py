@@ -6,8 +6,20 @@ def _ip_to_u32(ip: str) -> int:
     return (a << 24) | (b << 16) | (c << 8) | d
 
 def _build_netflow_v5_one_record(
-    src="10.0.0.1", dst="10.0.0.2", src_port=1234, dst_port=80, proto=6, packets=7, bytes_=900
+    src="10.0.0.1",
+    dst="10.0.0.2",
+    src_port=1234,
+    dst_port=80,
+    proto=6,
+    packets=7,
+    bytes_=900,
 ) -> bytes:
+    import struct
+
+    def _ip_to_u32(ip: str) -> int:
+        a, b, c, d = [int(x) for x in ip.split(".")]
+        return (a << 24) | (b << 16) | (c << 8) | d
+
     version = 5
     count = 1
     sys_uptime = 0
@@ -16,43 +28,71 @@ def _build_netflow_v5_one_record(
     flow_seq = 1
     engine_type = 0
     engine_id = 0
-    sampling = 0
+    sampling_interval = 0
 
-    header = struct.pack("!HHIIIIBBH",
-        version, count, sys_uptime, unix_secs, unix_nsecs, flow_seq, engine_type, engine_id, sampling
+    # NetFlow v5 header is 24 bytes
+    header = struct.pack(
+        "!HHIIIIBBH",
+        version,
+        count,
+        sys_uptime,
+        unix_secs,
+        unix_nsecs,
+        flow_seq,
+        engine_type,
+        engine_id,
+        sampling_interval,
     )
 
-    src_u32 = _ip_to_u32(src)
-    dst_u32 = _ip_to_u32(dst)
+    srcaddr = _ip_to_u32(src)
+    dstaddr = _ip_to_u32(dst)
     nexthop = 0
     input_if = 0
     output_if = 0
+    dPkts = packets
+    dOctets = bytes_
     first = 0
     last = 0
-    tos = 0
-    tcp_flags = 0
+    srcport = src_port
+    dstport = dst_port
     pad1 = 0
+    tcp_flags = 0
+    prot = proto
+    tos = 0
     src_as = 0
     dst_as = 0
     src_mask = 0
     dst_mask = 0
     pad2 = 0
 
-    rec = struct.pack("!IIIHHIIIIHHBBBBHHBBH",
-        src_u32, dst_u32, nexthop,
-        input_if, output_if,
-        packets, bytes_,
-        first, last,
-        src_port, dst_port,
-        pad1, tcp_flags, proto, tos,
-        0, 0,
-        src_as, dst_as,
-        src_mask, dst_mask,
-        pad2
+    # NetFlow v5 record is 48 bytes
+    # Field order and sizes:
+    # 3x u32, 2x u16, 2x u32, 2x u32, 2x u32, 2x u16, 4x u8, 2x u16, 2x u8, 1x u16
+    rec = struct.pack(
+        "!IIIHHIIIIHHBBBBHHBBH",
+        srcaddr,
+        dstaddr,
+        nexthop,
+        input_if,
+        output_if,
+        dPkts,
+        dOctets,
+        first,
+        last,
+        srcport,
+        dstport,
+        pad1,
+        tcp_flags,
+        prot,
+        tos,
+        src_as,
+        dst_as,
+        src_mask,
+        dst_mask,
+        pad2,
     )
-    # Above packing is tricky, so simplest is to force correct record length by padding
-    # NetFlow v5 record must be 48 bytes
-    rec = rec[:48].ljust(48, b"\x00")
+
+    assert len(rec) == 48
     return header + rec
 
 def test_netflow_v5_decoder_parses_one_record():
