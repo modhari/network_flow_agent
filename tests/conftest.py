@@ -7,7 +7,7 @@ from flow_agent_mcp.core.capability_base import CapabilityContext
 
 @pytest.fixture
 def store():
-    return FlowStore(max_records=10_000)
+    return FlowStore(maxlen=10_000)
 
 @pytest.fixture
 def monitor():
