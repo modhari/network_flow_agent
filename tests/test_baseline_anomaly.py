@@ -3,7 +3,7 @@ from flow_agent_mcp.core.models import FlowRecord
 from flow_agent_mcp.capabilities.baseline_anomaly.capability import BaselineAnomalyCapability
 
 
-def _flow(latency_ms: float, exporter: str = "1.2.3.4") -> FlowRecord:
+def _flow(latency_ms: float) -> FlowRecord:
     # FlowRecord already exists in your repo. We set fields that your model supports.
     # If FlowRecord does not include exporter or latency_ms, tell me and I will adjust.
     return FlowRecord(
@@ -13,12 +13,10 @@ def _flow(latency_ms: float, exporter: str = "1.2.3.4") -> FlowRecord:
         src_port=1234,
         dst_port=443,
         proto="TCP",
+        latency_ms=latency_ms,
         packets=1,
         bytes=100,
-        latency_ms=latency_ms,
-        exporter=exporter,
     )
-
 
 def test_baseline_anomaly_detects_spike(store, monitor, ctx):
     cap = BaselineAnomalyCapability()
@@ -28,7 +26,7 @@ def test_baseline_anomaly_detects_spike(store, monitor, ctx):
         alpha=0.2,
         z_threshold=3.0,
         min_updates=5,
-        group_mode="exporter",
+        group_mode="pair",
         cooldown_seconds=0,
         shift_threshold=0.9,
         shift_min_total=1000,
@@ -61,7 +59,7 @@ def test_traffic_shift_detects_distribution_change(store, monitor, ctx):
         alpha=0.2,
         z_threshold=10.0,  # disable anomaly
         min_updates=999,
-        group_mode="exporter",
+        group_mode="src",
         cooldown_seconds=0,
         shift_threshold=0.6,
         shift_min_total=50.0,

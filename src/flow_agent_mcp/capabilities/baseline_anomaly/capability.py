@@ -69,7 +69,7 @@ class BaselineAnomalyCapability:
         self._shift_threshold = 0.7
         self._shift_min_total = 200.0
 
-        self._group_mode = "exporter"
+        self._group_mode = "pair"
         self._cooldown_seconds = 120
         self._last_alert_ts: Dict[str, float] = {}
 
