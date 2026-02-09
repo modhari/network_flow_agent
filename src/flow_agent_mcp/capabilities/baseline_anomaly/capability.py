@@ -4,7 +4,7 @@ import time
 from dataclasses import asdict
 from typing import Any, Dict, List, Optional, Tuple
 
-from flow_agent_mcp.core.capability_base import CapabilityBase, CapabilityContext
+from flow_agent_mcp.core.capability_base import CapabilityContext
 from flow_agent_mcp.core.models import FlowRecord
 
 from .baseline import AnomalyEvent, BaselineModel, compute_window_stats
@@ -42,7 +42,7 @@ def _key_builder(flow: FlowRecord, mode: str) -> str:
     return f"all:{mode}"
 
 
-class BaselineAnomalyCapability(CapabilityBase):
+class BaselineAnomalyCapability:
     """
     Protocol neutral capability.
 
@@ -56,7 +56,6 @@ class BaselineAnomalyCapability(CapabilityBase):
     name = "baseline_anomaly"
 
     def __init__(self) -> None:
-        super().__init__()
         self._baseline = BaselineModel()
         self._shift = ShiftModel()
 
