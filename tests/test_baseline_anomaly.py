@@ -8,7 +8,7 @@ def _flow(latency_ms: float) -> FlowRecord:
     # If FlowRecord does not include exporter or latency_ms, tell me and I will adjust.
     return FlowRecord(
         ts=time.time(),
-        src=src,
+        src="10.0.0.1",
         dst="10.0.0.2",
         src_port=1234,
         dst_port=443,
