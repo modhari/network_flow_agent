@@ -18,6 +18,19 @@ def _flow(latency_ms: float) -> FlowRecord:
         bytes=100,
     )
 
+def _flow_src(latency_ms: float, src: str) -> FlowRecord:
+    return FlowRecord(
+        ts=time.time(),
+        src=src,
+        dst="10.0.0.2",
+        src_port=1234,
+        dst_port=443,
+        proto="TCP",
+        latency_ms=latency_ms,
+        packets=1,
+        bytes=100,
+    )
+
 def test_baseline_anomaly_detects_spike(store, monitor, ctx):
     cap = BaselineAnomalyCapability()
     cap.configure(
