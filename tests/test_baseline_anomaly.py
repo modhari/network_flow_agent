@@ -8,7 +8,7 @@ def _flow(latency_ms: float) -> FlowRecord:
     # If FlowRecord does not include exporter or latency_ms, tell me and I will adjust.
     return FlowRecord(
         ts=time.time(),
-        src="10.0.0.1",
+        src=src,
         dst="10.0.0.2",
         src_port=1234,
         dst_port=443,
@@ -42,7 +42,7 @@ def test_baseline_anomaly_detects_spike(store, monitor, ctx):
         assert out["ok"] is True
 
     # Inject spike
-    spike = [_flow(200.0) for _ in range(60)]
+    spike = [_flow(500.0) for _ in range(60)]
     ctx.store.add_many(spike)
 
     out = cap.analyze_once(ctx)
@@ -66,13 +66,13 @@ def test_traffic_shift_detects_distribution_change(store, monitor, ctx):
     )
 
     # window 1: mostly exporter A
-    ctx.store.add_many([_flow(10.0, exporter="A") for _ in range(90)])
-    ctx.store.add_many([_flow(10.0, exporter="B") for _ in range(10)])
+    ctx.store.add_many([_flow_src(10.0, src="10.0.0.1") for _ in range(90)])
+    ctx.store.add_many([_flow_src(10.0, src="10.0.0.9") for _ in range(10)])
     cap.analyze_once(ctx)  # prime previous distribution
 
     # window 2: mostly exporter B
-    ctx.store.add_many([_flow(10.0, exporter="A") for _ in range(10)])
-    ctx.store.add_many([_flow(10.0, exporter="B") for _ in range(90)])
+    ctx.store.add_many([_flow_src(10.0, src="10.0.0.1") for _ in range(10)])
+    ctx.store.add_many([_flow_src(10.0, src="10.0.0.9") for _ in range(90)])    
 
     out = cap.analyze_once(ctx)
     assert out["shift"] is not None
