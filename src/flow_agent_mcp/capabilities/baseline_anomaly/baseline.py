@@ -140,15 +140,33 @@ class BaselineModel:
     ) -> Optional[Tuple[float, float, float]]:
         """
         Returns (mean, std, zscore) if anomaly, else None.
+        Important behavior:
+          - If the baseline variance is zero and the value changes,
+            treat it as an anomaly.
+          - This prevents perfectly stable baselines from masking spikes.
         """
         pt = self.get_point(key, metric)
+        
+        #Not enough historical data yet
         if pt.n < min_updates:
             return None
 
         std = pt.std()
+        # ------------------------------------------------------------
+        # Zero variance guard
+        #
+        # If the baseline has learned a perfectly flat signal (std ~ 0),
+        # any deviation from the mean is significant.
+        #
+        # This commonly happens in tests and in real networks during
+        # steady state operation.
+        # ------------------------------------------------------------ 
         if std <= 1e-9:
+            if current_value != pt.mean:
+                return (pt.mean, std, float("inf"))
             return None
 
+        # Standard z-score detection
         z = (current_value - pt.mean) / std
         if abs(z) >= z_threshold:
             return (pt.mean, std, z)
